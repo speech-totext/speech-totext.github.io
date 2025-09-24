@@ -1,1 +1,276 @@
 
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Conversor avanzado de voz a texto</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* Custom scrollbar for a better look */
+        textarea::-webkit-scrollbar {
+            width: 8px;
+        }
+        textarea::-webkit-scrollbar-track {
+            background: #2d3748;
+        }
+        textarea::-webkit-scrollbar-thumb {
+            background-color: #4a5568;
+            border-radius: 20px;
+            border: 3px solid #2d3748;
+        }
+        /* Style for the microphone icon pulse animation */
+        .pulse {
+            animation: pulse-animation 1.5s infinite;
+        }
+        @keyframes pulse-animation {
+            0% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+            }
+            70% {
+                box-shadow: 0 0 0 20px rgba(239, 68, 68, 0);
+            }
+            100% {
+                box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+            }
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white flex items-center justify-center min-h-screen">
+
+    <div class="w-full max-w-3xl mx-auto p-4 md:p-8">
+        <div class="bg-gray-800 rounded-2xl shadow-2xl p-6 md:p-8 space-y-6">
+            <!-- Header -->
+            <div class="text-center">
+                <h1 class="text-3xl md:text-4xl font-bold text-gray-100">Conversor avanzado de voz a texto</h1>
+                <p class="text-gray-400 mt-2">Selecciona un idioma y presiona "Iniciar dictado" para comenzar.</p>
+            </div>
+
+            <!-- Status Indicator -->
+            <div id="status" class="flex items-center justify-center space-x-3 h-8 text-lg font-medium text-cyan-400 transition-all duration-300">
+                <i id="status-icon" class="fas fa-keyboard"></i>
+                <span id="status-text">Listo para transcribir</span>
+            </div>
+
+            <!-- Controls -->
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <div class="relative w-full sm:w-auto">
+                    <select id="language-select" class="w-full bg-gray-700 text-white py-2 pl-4 pr-10 rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-cyan-500 transition-all duration-300">
+                        <!-- Options will be populated by JS -->
+                    </select>
+                    <div class="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-gray-400">
+                        <i class="fas fa-chevron-down"></i>
+                    </div>
+                </div>
+                 <button id="start-btn" class="w-full sm:w-auto flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform hover:scale-105">
+                    <i class="fas fa-microphone"></i>
+                    <span>Iniciar dictado</span>
+                </button>
+                <button id="stop-btn" class="w-full sm:w-auto flex items-center justify-center gap-2 bg-red-600 hover:bg-red-700 text-white font-bold py-2 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 hidden">
+                    <i class="fas fa-stop-circle"></i>
+                    <span>Detener</span>
+                </button>
+            </div>
+
+            <!-- Text Area -->
+            <div class="relative">
+                <textarea id="transcript" class="w-full h-64 bg-gray-900/50 border-2 border-gray-700 rounded-lg p-4 text-lg text-gray-200 focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-all duration-300" placeholder="La transcripción aparecerá aquí..."></textarea>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex flex-col sm:flex-row items-center justify-end gap-3">
+                <button id="copy-btn" class="w-full sm:w-auto flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-300">
+                    <i class="fas fa-copy"></i>
+                    <span>Copiar texto</span>
+                </button>
+                <button id="clear-btn" class="w-full sm:w-auto flex items-center justify-center gap-2 bg-gray-600 hover:bg-gray-700 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-300">
+                    <i class="fas fa-trash-alt"></i>
+                    <span>Borrar</span>
+                </button>
+            </div>
+        </div>
+        
+        <!-- Custom notification toast -->
+        <div id="toast" class="fixed bottom-10 right-10 bg-green-500 text-white py-3 px-6 rounded-lg shadow-lg transform translate-y-20 opacity-0 transition-all duration-500 ease-in-out">
+            <p>¡Texto copiado al portapapeles!</p>
+        </div>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Check for browser support
+            const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+            if (!SpeechRecognition) {
+                alert("Lo siento, tu navegador no soporta la API de Reconocimiento de Voz. Intenta con Chrome.");
+                return;
+            }
+
+            // DOM Elements
+            const startBtn = document.getElementById('start-btn');
+            const stopBtn = document.getElementById('stop-btn');
+            const copyBtn = document.getElementById('copy-btn');
+            const clearBtn = document.getElementById('clear-btn');
+            const transcriptEl = document.getElementById('transcript');
+            const statusEl = document.getElementById('status');
+            const statusIcon = document.getElementById('status-icon');
+            const statusText = document.getElementById('status-text');
+            const languageSelect = document.getElementById('language-select');
+            const toast = document.getElementById('toast');
+
+            // Speech Recognition instance
+            let recognition = new SpeechRecognition();
+            let finalTranscript = '';
+
+            // Languages for the dropdown
+            const languages = [
+                { name: 'Español (España)', code: 'es-ES' },
+                { name: 'Español (México)', code: 'es-MX' },
+                { name: 'English (US)', code: 'en-US' },
+                { name: 'Français (France)', code: 'fr-FR' },
+                { name: 'Deutsch (Deutschland)', code: 'de-DE' },
+                { name: 'Italiano (Italia)', code: 'it-IT' },
+                { name: 'Português (Brasil)', code: 'pt-BR' },
+                { name: '日本語 (日本)', code: 'ja-JP' },
+                { name: '中文 (普通话，中国大陆)', code: 'cmn-Hans-CN' },
+                { name: 'Русский (Россия)', code: 'ru-RU' },
+            ];
+
+            // Populate language dropdown
+            languages.forEach(lang => {
+                const option = document.createElement('option');
+                option.value = lang.code;
+                option.textContent = lang.name;
+                languageSelect.appendChild(option);
+            });
+            languageSelect.value = 'es-ES'; // Default language
+
+            // Recognition settings
+            recognition.continuous = true;
+            recognition.interimResults = true;
+
+            // Event Handlers for Recognition
+            recognition.onstart = () => {
+                updateStatus('listening', 'Escuchando...');
+                startBtn.classList.add('hidden');
+                stopBtn.classList.remove('hidden');
+                stopBtn.querySelector('i').classList.add('pulse');
+            };
+
+            recognition.onend = () => {
+                updateStatus('ready', 'Listo para transcribir');
+                startBtn.classList.remove('hidden');
+                stopBtn.classList.add('hidden');
+                stopBtn.querySelector('i').classList.remove('pulse');
+            };
+
+            recognition.onerror = (event) => {
+                console.error("Speech recognition error", event.error);
+                let errorMessage = 'Ocurrió un error';
+                if (event.error === 'no-speech') {
+                    errorMessage = 'No se detectó voz. Inténtalo de nuevo.';
+                } else if (event.error === 'audio-capture') {
+                    errorMessage = 'Error al capturar audio. Revisa tu micrófono.';
+                } else if (event.error === 'not-allowed') {
+                    errorMessage = 'Permiso de micrófono denegado.';
+                }
+                updateStatus('error', errorMessage);
+            };
+
+            recognition.onresult = (event) => {
+                let interimTranscript = '';
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    if (event.results[i].isFinal) {
+                        finalTranscript += event.results[i][0].transcript;
+                    } else {
+                        interimTranscript += event.results[i][0].transcript;
+                    }
+                }
+                transcriptEl.value = finalTranscript + interimTranscript;
+            };
+
+            // Button Event Listeners
+            startBtn.addEventListener('click', () => {
+                finalTranscript = transcriptEl.value;
+                recognition.lang = languageSelect.value;
+                try {
+                    recognition.start();
+                } catch(e) {
+                    console.error("Error starting recognition:", e);
+                    updateStatus('error', 'No se pudo iniciar. Inténtalo de nuevo.');
+                }
+            });
+
+            stopBtn.addEventListener('click', () => {
+                recognition.stop();
+            });
+
+            copyBtn.addEventListener('click', () => {
+                const textToCopy = transcriptEl.value;
+                if (textToCopy) {
+                    // Using document.execCommand as a fallback for iframe compatibility
+                    const textArea = document.createElement('textarea');
+                    textArea.value = textToCopy;
+                    document.body.appendChild(textArea);
+                    textArea.select();
+                    try {
+                        document.execCommand('copy');
+                        showToast();
+                    } catch (err) {
+                        console.error('Fallback: Oops, unable to copy', err);
+                    }
+                    document.body.removeChild(textArea);
+                }
+            });
+
+            clearBtn.addEventListener('click', () => {
+                transcriptEl.value = '';
+                finalTranscript = '';
+            });
+
+            // Helper Functions
+            function updateStatus(state, text) {
+                statusText.textContent = text;
+                statusEl.classList.remove('text-cyan-400', 'text-red-400', 'text-yellow-400');
+                statusIcon.classList.remove('fa-keyboard', 'fa-microphone-alt', 'fa-exclamation-triangle');
+
+                switch (state) {
+                    case 'listening':
+                        statusEl.classList.add('text-red-400');
+                        statusIcon.classList.add('fa-microphone-alt');
+                        break;
+                    case 'error':
+                        statusEl.classList.add('text-yellow-400');
+                        statusIcon.classList.add('fa-exclamation-triangle');
+                        break;
+                    case 'ready':
+                    default:
+                        statusEl.classList.add('text-cyan-400');
+                        statusIcon.classList.add('fa-keyboard');
+                        break;
+                }
+            }
+            
+            function showToast() {
+                toast.classList.remove('opacity-0', 'translate-y-20');
+                toast.classList.add('opacity-100', 'translate-y-0');
+                setTimeout(() => {
+                    toast.classList.remove('opacity-100', 'translate-y-0');
+                    toast.classList.add('opacity-0', 'translate-y-20');
+                }, 3000);
+            }
+        });
+    </script>
+</body>
+</html>
+
